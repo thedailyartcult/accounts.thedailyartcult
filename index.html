@@ -328,26 +328,28 @@
             </div>
           `;
 
-          // Handle Play Click (Fetch secure Signed URL from Supabase Private Storage Bucket)
-          const playBtn = row.querySelector(".play-btn");
-          playBtn.addEventListener("click", async () => {
-            const storagePath = playBtn.dataset.path;
-            const trackTitle = playBtn.dataset.title;
+// Handle Play Click (Fetch secure Signed URL from Supabase Private Storage Bucket)
+const playBtn = row.querySelector(".play-btn");
+playBtn.addEventListener("click", async () => {
+  const storagePath = playBtn.dataset.path;
+  const trackTitle = playBtn.dataset.title;
 
-            playBtn.innerHTML = "<span>◌</span> Securing pipeline...";
+  playBtn.innerHTML = "<span>◌</span> Securing pipeline...";
 
-            /*
-              When connected to real Supabase Storage, we fetch a secure temporary Signed URL:
-              
-              const { data, error } = await supabase
-                .storage
-                .from('audio-releases')
-                .createSignedUrl(storagePath, 600); // 10 minute token
-              
-              if (data) {
-                playAudio(data.signedUrl, trackTitle);
-              }
-            */
+  // Fetch real temporary Signed URL from Supabase Storage [2]
+  const { data, error } = await supabase
+    .storage
+    .from('audio-releases')
+    .createSignedUrl(storagePath, 600); // URL remains active for 10 minutes
+
+  if (error) {
+    console.error("Signed URL retrieval failed:", error);
+    playBtn.innerHTML = "<span>▶</span> Stream Failed";
+  } else if (data) {
+    playBtn.innerHTML = "<span>▶</span> Stream Edition";
+    playAudio(data.signedUrl, trackTitle);
+  }
+});
             
             // Temporary Fallback (using local test asset)
             setTimeout(() => {
