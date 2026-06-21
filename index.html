@@ -159,14 +159,14 @@
     <p>&copy; 2026 The Daily Art Cult. Built upon privacy, voiced with intention.</p>
   </footer>
 
-  <!-- SCRIPT LOGIC -->
+<!-- SCRIPT LOGIC -->
   <script>
     // --- SUPABASE CONFIGURATION ---
-    // Make sure these match the credentials in your index.html exactly
     const SUPABASE_URL = "https://frwjaixxlgthkgjtafhz.supabase.co"; 
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZyd2phaXh4bGd0aGtnanRhZmh6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwNDUzNDQsImV4cCI6MjA5NDYyMTM0NH0.j2DKz__QMml4WplMYNmsQpTUw0qu-kZG7Md3qBEEdEc"; 
     
-    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // Named "supabaseClient" to avoid library name collisions
+    const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     // --- DOM REFERENCES ---
     const authGate = document.getElementById("auth-gate");
@@ -187,7 +187,7 @@
     const releasesList = document.getElementById("releases-list");
 
     // --- STATE ROUTER ---
-    supabase.auth.onAuthStateChange((event, session) => {
+    supabaseClient.auth.onAuthStateChange((event, session) => {
       if (session) {
         authGate.classList.add("hidden");
         dashboard.classList.remove("hidden");
@@ -206,10 +206,10 @@
       const email = emailInput.value.trim();
       authFeedback.textContent = "Transmitting access key...";
 
-      const { error } = await supabase.auth.signInWithOtp({
+      const { error } = await supabaseClient.auth.signInWithOtp({
         email: email,
         options: {
-          emailRedirectTo: window.location.origin // Redirects back to GitHub Pages accounts page
+          emailRedirectTo: window.location.origin // Redirects back to your GitHub Pages subdomain
         }
       });
 
@@ -223,12 +223,12 @@
 
     // 2. Logout Click
     logoutBtn.addEventListener("click", async () => {
-      await supabase.auth.signOut();
+      await supabaseClient.auth.signOut();
     });
 
     // --- MEMBER DASHBOARD LOGIC ---
     async function loadMemberDashboard(user) {
-      patronGreeting.textContent = `Welcome, Patron`;
+      patronGreeting.textContent = `Welcome, Member`;
       
       // Fetch User's .md Context
       fetchUserContext(user.id);
@@ -241,14 +241,13 @@
     async function fetchUserContext(userId) {
       profileStatus.textContent = "Loading profile...";
       
-      // Assumes a table named 'user_contexts' exists with columns 'user_id' and 'markdown_text'
-      const { data, error } = await supabase
+      const { data, error } = await supabaseClient
         .from('user_contexts')
         .select('markdown_text')
         .eq('user_id', userId)
         .single();
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found, which is normal for first login
+      if (error && error.code !== 'PGRST116') { 
         console.error("Context fetch failed:", error);
         profileStatus.textContent = "Error reading profile.";
       } else if (data) {
@@ -264,13 +263,13 @@
       e.preventDefault();
       profileStatus.textContent = "Securing modifications...";
       
-      const user = (await supabase.auth.getUser()).data.user;
+      const user = (await supabaseClient.auth.getUser()).data.user;
       if (!user) return;
 
       const updatedText = profileMdText.value;
 
       // Upsert profile text
-      const { error } = await supabase
+      const { error } = await supabaseClient
         .from('user_contexts')
         .upsert({ 
           user_id: user.id, 
@@ -290,79 +289,71 @@
     async function fetchUserReleases(userId) {
       releasesList.innerHTML = '<p class="text-xs text-linen/30 italic py-6 text-center">Consulting database bookshelves...</p>';
 
-      /* 
-        This is designed to query your future "audio_releases" structure.
-        You can replace the fake mock array below with actual DB queries:
-        
-        const { data, error } = await supabase
-          .from('audio_releases')
-          .select('id, title, storage_path, description, created_at')
-          .eq('user_id', userId);
-      */
+      const { data, error } = await supabaseClient
+        .from('audio_releases')
+        .select('id, title, storage_path, description, created_at')
+        .eq('user_id', userId);
       
-      // MOCK DATA: Simulating what will pull from your database in Solution 2
-      const fakeDatabaseReleases = [
-        { id: 101, title: "Issue No. 12: Amor Fati & Transition", storage_path: "audio/becoming.mp3", description: "Woven against your career transitions. Synthesized on Nietzsche's concept of loving fate.", created_at: "2026-06-15" }
-      ];
+      if (error) {
+        console.error("Failed to load releases:", error);
+        releasesList.innerHTML = '<p class="text-xs text-linen/30 italic py-6 text-center">Error contacting library shelf.</p>';
+        return;
+      }
 
-      setTimeout(() => {
-        if (fakeDatabaseReleases.length === 0) {
-          releasesList.innerHTML = '<p class="text-xs text-linen/30 italic py-6 text-center">Your upcoming issue is currently being composed. It will appear here on release day.</p>';
-          return;
-        }
+      if (!data || data.length === 0) {
+        releasesList.innerHTML = '<p class="text-xs text-linen/30 italic py-6 text-center">Your upcoming issue is currently being composed. It will appear here on release day.</p>';
+        return;
+      }
 
-        releasesList.innerHTML = '';
-        fakeDatabaseReleases.forEach(item => {
-          const row = document.createElement("div");
-          row.className = "group flex items-start gap-4 p-4 rounded-lg bg-black/20 border border-white/[0.03] hover:border-antique/20 hover:bg-black/40 transition duration-300 text-left";
-          row.innerHTML = `
-            <div class="flex-1 space-y-1">
-              <div class="flex items-center justify-between">
-                <h4 class="text-sm font-semibold text-cream group-hover:text-antique transition duration-300">${item.title}</h4>
-                <span class="text-[9px] font-mono text-linen/30">${item.created_at}</span>
-              </div>
-              <p class="text-xs text-linen/60 leading-relaxed">${item.description}</p>
-              <button class="play-btn pt-2 flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-widest text-antique hover:text-cream transition" data-path="${item.storage_path}" data-title="${item.title}">
-                <span>▶</span> Stream Edition
-              </button>
-            </div>
-          `;
-
-// Handle Play Click (Fetch secure Signed URL from Supabase Private Storage Bucket)
-const playBtn = row.querySelector(".play-btn");
-playBtn.addEventListener("click", async () => {
-  const storagePath = playBtn.dataset.path;
-  const trackTitle = playBtn.dataset.title;
-
-  playBtn.innerHTML = "<span>◌</span> Securing pipeline...";
-
-  // Fetch real temporary Signed URL from Supabase Storage [2]
-  const { data, error } = await supabase
-    .storage
-    .from('audio-releases')
-    .createSignedUrl(storagePath, 600); // URL remains active for 10 minutes
-
-  if (error) {
-    console.error("Signed URL retrieval failed:", error);
-    playBtn.innerHTML = "<span>▶</span> Stream Failed";
-  } else if (data) {
-    playBtn.innerHTML = "<span>▶</span> Stream Edition";
-    playAudio(data.signedUrl, trackTitle);
-  }
-});
-            
-            // Temporary Fallback (using local test asset)
-            setTimeout(() => {
-              playBtn.innerHTML = "<span>▶</span> Stream Edition";
-              // We simulate loading the audio stream
-              playAudio(`https://frwjaixxlgthkgjtafhz.supabase.co/storage/v1/object/public/test-assets/becoming.mp3`, trackTitle);
-            }, 500);
-
-          });
-
-          releasesList.appendChild(row);
+      releasesList.innerHTML = '';
+      data.forEach(item => {
+        const row = document.createElement("div");
+        row.className = "group flex items-start gap-4 p-4 rounded-lg bg-black/20 border border-white/[0.03] hover:border-antique/20 hover:bg-black/40 transition duration-300 text-left";
+        
+        // Clean and format date
+        const formattedDate = new Date(item.created_at).toLocaleDateString(undefined, {
+          year: 'numeric',
+          month: 'long',
+          day: 'numeric'
         });
-      }, 700);
+
+        row.innerHTML = `
+          <div class="flex-1 space-y-1">
+            <div class="flex items-center justify-between">
+              <h4 class="text-sm font-semibold text-cream group-hover:text-antique transition duration-300">${item.title}</h4>
+              <span class="text-[9px] font-mono text-linen/30">${formattedDate}</span>
+            </div>
+            <p class="text-xs text-linen/60 leading-relaxed">${item.description}</p>
+            <button class="play-btn pt-2 flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-widest text-antique hover:text-cream transition" data-path="${item.storage_path}" data-title="${item.title}">
+              <span>▶</span> Stream Edition
+            </button>
+          </div>
+        `;
+
+        // Handle Play Click (Fetch secure Signed URL from Supabase Private Storage Bucket)
+        const playBtn = row.querySelector(".play-btn");
+        playBtn.addEventListener("click", async () => {
+          const storagePath = playBtn.dataset.path;
+          const trackTitle = playBtn.dataset.title;
+
+          playBtn.innerHTML = "<span>◌</span> Securing pipeline...";
+
+          const { data: signedData, error: signedError } = await supabaseClient
+            .storage
+            .from('audio-releases')
+            .createSignedUrl(storagePath, 600); 
+
+          if (signedError) {
+            console.error("Signed URL retrieval failed:", signedError);
+            playBtn.innerHTML = "<span>▶</span> Stream Failed";
+          } else if (signedData) {
+            playBtn.innerHTML = "<span>▶</span> Stream Edition";
+            playAudio(signedData.signedUrl, trackTitle);
+          }
+        });
+
+        releasesList.appendChild(row);
+      });
     }
 
     // D. Helper to load track into player
@@ -375,7 +366,8 @@ playBtn.addEventListener("click", async () => {
         console.warn("Autoplay blocked or play failed:", err);
       });
     }
-
   </script>
+
+  
 </body>
 </html>
