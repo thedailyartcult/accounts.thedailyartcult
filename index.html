@@ -109,13 +109,42 @@
           <div class="quiet-panel p-6 rounded-xl">
             <h3 class="font-serif text-lg text-cream mb-2">My Philosophical Context</h3>
             <p class="text-xs text-linen/50 leading-relaxed mb-4">
-              Your context profile shape-shifts the voices of future publications. Upload your updated <code class="text-antique font-mono">.md</code> format document below.
+              Your context profile shape-shifts the voices of future publications. Create or update your profile below.
             </p>
             
+            <!-- Copier Card for LLM Prompt Generation -->
+            <div class="border border-linen/10 bg-[#120a06]/80 p-4 rounded-xl text-xs space-y-3 text-left mb-4">
+              <p class="text-linen/70 leading-relaxed font-sans text-[11px]">
+                Generate your permanent context profile: copy the synthesis prompt, run it on Claude or ChatGPT, and drop the resulting <code class="text-antique font-mono">.md</code> file below.
+              </p>
+              <button type="button" id="copy-profile-prompt-btn" class="w-full py-2.5 px-4 bg-antique/5 hover:bg-antique/15 border border-antique/30 hover:border-antique text-antique font-mono text-[9px] uppercase tracking-widest transition duration-300 rounded flex items-center justify-center gap-2">
+                <span>Get Profile Generator Prompt</span>
+                <svg class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 002-2" />
+                </svg>
+              </button>
+            </div>
+
             <form id="profile-form" class="space-y-4">
-              <div>
-                <label class="block text-[9px] font-mono uppercase tracking-widest text-linen/40 mb-1.5">Profile markdown text</label>
-                <textarea id="profile-md-text" rows="8" placeholder="Paste your markdown context profile here..." class="w-full bg-[#14100e]/85 border border-linen/10 rounded-lg p-3 text-xs text-cream font-mono leading-relaxed focus:border-antique/50 focus:outline-none resize-none scrollbar-none"></textarea>
+              <!-- Visual Drag and Drop Target Area -->
+              <div id="md-drop-zone" class="relative group border border-dashed border-linen/20 hover:border-antique/50 bg-black/40 hover:bg-[#120c09]/60 rounded-xl transition-all duration-300 flex flex-col items-center justify-center p-6 text-center cursor-pointer min-h-[140px]">
+                <input type="file" id="md-file-input" accept=".md,text/markdown" class="hidden">
+                
+                <div id="drop-zone-idle" class="flex flex-col items-center gap-3">
+                  <div class="relative w-10 h-10 flex items-center justify-center">
+                    <svg class="w-6 h-6 text-linen/40 group-hover:text-antique group-hover:-translate-y-1 transition duration-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                  </div>
+                  <p class="text-[9px] font-mono uppercase tracking-widest text-linen/50 group-hover:text-linen/75 transition duration-300">
+                    Drag & Drop your <span class="text-antique font-bold">.md</span> file here
+                  </p>
+                  <span class="text-[9px] text-linen/25 font-sans">
+                    — or <button type="button" id="reveal-paste-btn" class="underline hover:text-antique transition duration-200">paste raw text instead</button> —
+                  </span>
+                </div>
+
+                <textarea id="profile-md-text" rows="8" placeholder="Paste your raw markdown code here..." class="hidden w-full bg-transparent border border-linen/10 rounded-lg p-3 text-xs text-cream font-mono leading-relaxed focus:border-antique/50 focus:outline-none resize-none scrollbar-none"></textarea>
               </div>
               
               <div class="flex items-center justify-between">
@@ -186,6 +215,71 @@
     const hudTrackTitle = document.getElementById("hud-track-title");
     const releasesList = document.getElementById("releases-list");
 
+    // NEW DOM REFERENCES FOR DRAG & DROP / COPY
+    const dropZone = document.getElementById("md-drop-zone");
+    const dropZoneIdle = document.getElementById("drop-zone-idle");
+    const mdFileInput = document.getElementById("md-file-input");
+    const revealPasteBtn = document.getElementById("reveal-paste-btn");
+    const copyPromptBtn = document.getElementById("copy-profile-prompt-btn");
+
+    // --- PROMPT TEXT CONSTANT ---
+    const PROFILE_PROMPT_TEXT = `# Prompt: Generate My Personal Learning & Context Profile
+
+> **How to use this:** Paste everything below the horizontal rule into a new Claude conversation. Claude will synthesize everything it knows about you from past sessions into a \`.md\` file you can attach to future conversations as context.
+
+---
+
+Claude, I want you to generate a \`.md\` file that functions as my **permanent personal context profile** — a living document I'll attach to future conversations so you can calibrate how you engage with me from the very first message.
+
+Pull from everything you know about me across all our past conversations. Structure the output as follows:
+
+---
+
+## 1. Identity & Intellectual Self-Concept
+Who I understand myself to be. My core intellectual identity, the thinkers I self-identify with, my relationship to autodidactic learning vs. institutional frameworks, and any recurring self-images or archetypes that surface in how I think and speak.
+
+## 2. Philosophical Architecture
+The thinkers and texts that form my actual operating system — not what I've casually mentioned, but what shapes *how I think*. Include:
+- Primary canon (deeply internalized)
+- Secondary influences (engaged but not foundational)
+- Tensions or productive contradictions between my influences
+- How I use philosophy: instrumentally, aesthetically, ethically, or otherwise
+
+## 3. Psychological Profile (as observed across conversations)
+Patterns in how I engage, learn, and respond. Include:
+- How I process new information (do I go broad first or drill immediately?)
+- My relationship to structure vs. intuition
+- Where I show high curiosity vs. resistance
+- How I respond to challenge, disagreement, or complexity
+- Any recurring cognitive or emotional patterns
+
+## 4. Astrological / Archetypal Lens *(if inferable)*
+Any astrological, Jungian, or archetypal framing that maps to how I operate — either things I've stated directly or patterns consistent with known frameworks.
+
+## 5. Learning Style & Pedagogy Preferences
+How I learn fastest. Include:
+- Do I prefer Socratic dialogue, direct transmission, or exploratory synthesis?
+- Do I respond better to analogies, first principles, or narrative?
+- My preferred density of information (concise vs. rich)
+- How I respond to examples, counterexamples, and edge cases
+- My tolerance for ambiguity vs. need for resolution
+
+## 6. Active Projects & Working Context
+The professional and creative work currently underway that shapes what I need from our conversations. Be specific — project names, platforms, goals, current blockers if known.
+
+## 7. Communication Preferences
+How I like Claude to speak to me. Tone, register, format preferences, things I find annoying or useful, whether I prefer directness or nuance-first delivery.
+
+## 8. Blind Spots & Growth Edges *(observed, not prescribed)*
+Patterns where I seem to avoid, rush past, or undervalue something that might serve me. Note these diplomatically — this section is for my benefit, not critique.
+
+## 9. One-Line Summary
+A single sentence that captures me as a learner and thinker — precise enough that another version of Claude reading it cold would immediately know how to engage me.
+
+---
+
+**Output format:** A clean \`.md\` file, ready to be saved and attached to future conversations. Use headers, subheaders, and bullet points where clarity demands it — but write in a register that sounds like *me*, not a clinical report. Treat it as a document I'd actually want to read.`;
+
     // --- STATE ROUTER ---
     supabaseClient.auth.onAuthStateChange((event, session) => {
       if (session) {
@@ -250,11 +344,24 @@
       if (error && error.code !== 'PGRST116') { 
         console.error("Context fetch failed:", error);
         profileStatus.textContent = "Error reading profile.";
-      } else if (data) {
+      } else if (data && data.markdown_text) {
         profileMdText.value = data.markdown_text || '';
         profileStatus.textContent = "Saved to vault";
+        
+        // Auto-show editor layout when data exists
+        profileMdText.classList.remove("hidden");
+        dropZoneIdle.classList.add("hidden");
+        dropZone.classList.remove("border-dashed");
+        dropZone.classList.add("border-antique/50", "bg-black/25");
       } else {
         profileStatus.textContent = "Profile empty";
+        
+        // Reset drop zone appearance if empty
+        profileMdText.value = '';
+        profileMdText.classList.add("hidden");
+        dropZoneIdle.classList.remove("hidden");
+        dropZone.classList.add("border-dashed");
+        dropZone.classList.remove("border-antique/50", "bg-black/25");
       }
     }
 
@@ -366,8 +473,85 @@
         console.warn("Autoplay blocked or play failed:", err);
       });
     }
+
+    // --- NEW DRAG-AND-DROP & COPY LOGIC INTERACTION ---
+
+    // 1. Copy Generator Prompt
+    if (copyPromptBtn) {
+      copyPromptBtn.addEventListener("click", () => {
+        navigator.clipboard.writeText(PROFILE_PROMPT_TEXT).then(() => {
+          const span = copyPromptBtn.querySelector("span");
+          const originalText = span.textContent;
+          span.textContent = "Copied to Clipboard";
+          copyPromptBtn.classList.add("border-antique", "bg-antique/20");
+          setTimeout(() => {
+            span.textContent = originalText;
+            copyPromptBtn.classList.remove("border-antique", "bg-antique/20");
+          }, 2200);
+        }).catch(err => {
+          console.warn("Clipboard copy operation failed:", err);
+        });
+      });
+    }
+
+    // 2. Process Dropped / Selected File
+    const processDroppedMd = (file) => {
+      if (!file) return;
+      const isMd = file.name.endsWith('.md') || file.type === 'text/markdown' || file.type === 'text/plain';
+      if (isMd) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          profileMdText.value = e.target.result;
+          profileMdText.classList.remove("hidden");
+          dropZoneIdle.classList.add("hidden");
+          dropZone.classList.remove("border-dashed");
+          dropZone.classList.add("border-antique/50", "bg-black/25");
+          profileStatus.textContent = "Draft loaded (Save to apply)";
+        };
+        reader.readAsText(file);
+      }
+    };
+
+    if (dropZone) {
+      dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("border-antique", "bg-[#1c140f]");
+      });
+      dropZone.addEventListener("dragleave", () => {
+        dropZone.classList.remove("border-antique", "bg-[#1c140f]");
+      });
+      dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("border-antique", "bg-[#1c140f]");
+        if (e.dataTransfer.files.length > 0) {
+          processDroppedMd(e.dataTransfer.files[0]);
+        }
+      });
+      dropZone.addEventListener("click", (e) => {
+        if (e.target !== profileMdText && !revealPasteBtn.contains(e.target)) {
+          mdFileInput?.click();
+        }
+      });
+    }
+
+    if (mdFileInput) {
+      mdFileInput.addEventListener("change", (e) => {
+        if (e.target.files.length > 0) {
+          processDroppedMd(e.target.files[0]);
+        }
+      });
+    }
+
+    if (revealPasteBtn) {
+      revealPasteBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        dropZoneIdle.classList.add("hidden");
+        profileMdText.classList.remove("hidden");
+        profileMdText.focus();
+      });
+    }
   </script>
 
-  
 </body>
 </html>
