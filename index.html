@@ -112,6 +112,30 @@
               Your context profile shape-shifts the voices of future publications. Create or update your profile below.
             </p>
             
+                      <!-- NEW PANEL: PHILOSOPHICAL ARSENAL -->
+          <div class="quiet-panel p-6 rounded-xl">
+            <h3 class="font-serif text-lg text-cream mb-2">My Philosophical Arsenal</h3>
+            <p class="text-xs text-linen/50 leading-relaxed mb-4">
+              Core concepts, lessons, and philosophical frameworks you have cataloged inside your quiet sanctuary.
+            </p>
+            
+            <!-- Summary of Last Study Session -->
+            <div class="border border-antique/20 bg-antique/5 p-3 rounded-lg text-xs mb-4 text-left">
+              <span class="text-[8px] font-mono uppercase tracking-widest text-antique">Last Session Focus</span>
+              <p id="arsenal-last-summary" class="text-linen/80 italic mt-1 font-serif leading-relaxed">
+                Loading study memory...
+              </p>
+            </div>
+
+            <!-- List of Learned Tags -->
+            <label class="block text-[9px] font-mono uppercase tracking-widest text-linen/40 mb-2">Acquired Lenses</label>
+            <div id="arsenal-tags-container" class="flex flex-wrap gap-1.5">
+              <span class="text-xs text-linen/30 italic">No topics cataloged yet. Complete your first release issue to begin.</span>
+            </div>
+          </div>
+
+        </div>
+            
             <!-- Copier Card for LLM Prompt Generation -->
             <div class="border border-linen/10 bg-[#120a06]/80 p-4 rounded-xl text-xs space-y-3 text-left mb-4">
               <p class="text-linen/70 leading-relaxed font-sans text-[11px]">
@@ -145,6 +169,14 @@
                 </div>
 
                 <textarea id="profile-md-text" rows="8" placeholder="Paste your raw markdown code here..." class="hidden w-full bg-transparent border border-linen/10 rounded-lg p-3 text-xs text-cream font-mono leading-relaxed focus:border-antique/50 focus:outline-none resize-none scrollbar-none"></textarea>
+              </div>
+              
+              <!-- COPY & PASTE THIS TOGGLE GRID BLOCK -->
+              <div class="border-t border-linen/10 pt-4 mt-6">
+                <label class="block text-[9px] font-mono uppercase tracking-widest text-linen/40 mb-2">My Active Worldview Lenses</label>
+                <div id="active-lenses-grid" class="grid grid-cols-2 gap-2">
+                  <!-- These buttons will be created automatically by the JavaScript below -->
+                </div>
               </div>
               
               <div class="flex items-center justify-between">
@@ -221,6 +253,12 @@
     const mdFileInput = document.getElementById("md-file-input");
     const revealPasteBtn = document.getElementById("reveal-paste-btn");
     const copyPromptBtn = document.getElementById("copy-profile-prompt-btn");
+    
+    // --- NEW REFERENCES FOR ACTIVE LENSES ---
+    const availableWorldviews = [
+      "Becoming", "Existentialism", "Stoicism", "Absurdism", "The Leap", "Mysticism", "Eastern Wisdom", "Politics", "Witness"
+    ];
+    let activeWorldviews = [];
 
     // --- PROMPT TEXT CONSTANT ---
     const PROFILE_PROMPT_TEXT = `# Prompt: Generate My Personal Learning & Context Profile
@@ -280,6 +318,87 @@ A single sentence that captures me as a learner and thinker — precise enough t
 
 **Output format:** A clean \`.md\` file, ready to be saved and attached to future conversations. Use headers, subheaders, and bullet points where clarity demands it — but write in a register that sounds like *me*, not a clinical report. Treat it as a document I'd actually want to read.`;
 
+// 1. This function grabs any temporary selections from the landing page and saves them permanently
+    async function syncPendingWorldviews(userId) {
+      const pending = localStorage.getItem('pending_worldviews');
+      if (pending) {
+        try {
+          const pendingList = JSON.parse(pending);
+          if (Array.isArray(pendingList) && pendingList.length > 0) {
+            const { data } = await supabaseClient
+              .from('user_contexts')
+              .select('selected_worldviews')
+              .eq('user_id', userId)
+              .single();
+
+            const currentList = data?.selected_worldviews || [];
+            const merged = Array.from(new Set([...currentList, ...pendingList]));
+
+            await supabaseClient
+              .from('user_contexts')
+              .upsert({
+                user_id: userId,
+                selected_worldviews: merged,
+                updated_at: new Date().toISOString()
+              }, { onConflict: 'user_id' });
+          }
+        } catch (e) {
+          console.error("Local sync error:", e);
+        } finally {
+          localStorage.removeItem('pending_worldviews'); // Clear the temp memory
+        }
+      }
+    }
+
+    // 2. This function builds the visual clickable buttons (toggles) dynamically
+    function renderActiveLenses(userId) {
+      const container = document.getElementById('active-lenses-grid');
+      if (!container) return;
+
+      container.innerHTML = availableWorldviews.map(wv => {
+        const isSelected = activeWorldviews.includes(wv);
+        return `
+          <button type="button" 
+            class="w-full text-left p-2 rounded-lg border text-[10px] font-mono uppercase tracking-wider transition duration-300 ${
+              isSelected 
+                ? 'bg-antique/10 border-antique text-antique' 
+                : 'bg-[#14100e]/80 border-linen/10 text-linen/50 hover:border-linen/20 hover:text-linen'
+            }"
+            onclick="toggleLens('${wv}', '${userId}')">
+            <span class="mr-1">${isSelected ? '●' : '○'}</span> ${wv}
+          </button>
+        `;
+      }).join('');
+    }
+
+    // 3. This function runs when a user clicks any toggle button
+    window.toggleLens = async function(title, userId) {
+      const idx = activeWorldviews.indexOf(title);
+      if (idx > -1) {
+        activeWorldviews.splice(idx, 1); // Remove if already selected
+      } else {
+        activeWorldviews.push(title); // Add if not selected
+      }
+      
+      renderActiveLenses(userId);
+      profileStatus.textContent = "Updating lenses...";
+
+      const { error } = await supabaseClient
+        .from('user_contexts')
+        .upsert({
+          user_id: userId,
+          selected_worldviews: activeWorldviews,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+
+      if (error) {
+        profileStatus.textContent = "Error saving lenses";
+        console.error(error);
+      } else {
+        profileStatus.textContent = "Saved to vault";
+      }
+    };  
+
     // --- STATE ROUTER ---
     supabaseClient.auth.onAuthStateChange((event, session) => {
       if (session) {
@@ -331,38 +450,60 @@ A single sentence that captures me as a learner and thinker — precise enough t
       fetchUserReleases(user.id);
     }
 
-    // A. Fetch Context File from DB
+// Replace your old fetchUserContext function with this one:
     async function fetchUserContext(userId) {
       profileStatus.textContent = "Loading profile...";
       
+      // Perform pending local sync if applicable
+      await syncPendingWorldviews(userId);
+
       const { data, error } = await supabaseClient
         .from('user_contexts')
-        .select('markdown_text')
+        .select('markdown_text, selected_worldviews, completed_topics, last_reflection_summary')
         .eq('user_id', userId)
         .single();
 
       if (error && error.code !== 'PGRST116') { 
         console.error("Context fetch failed:", error);
         profileStatus.textContent = "Error reading profile.";
-      } else if (data && data.markdown_text) {
+      } else if (data) {
+        // 1. Context text area
         profileMdText.value = data.markdown_text || '';
+        activeWorldviews = data.selected_worldviews || [];
         profileStatus.textContent = "Saved to vault";
         
-        // Auto-show editor layout when data exists
+        // 2. Render Last Reflection Summary
+        const lastSummaryEl = document.getElementById("arsenal-last-summary");
+        if (lastSummaryEl) {
+          lastSummaryEl.textContent = data.last_reflection_summary || "No prior studies cataloged.";
+        }
+
+        // 3. Render Arsenal acquired tags
+        const tagsContainer = document.getElementById("arsenal-tags-container");
+        if (tagsContainer) {
+          const completed = data.completed_topics || [];
+          if (completed.length === 0) {
+            tagsContainer.innerHTML = `<span class="text-[9px] text-linen/30 italic">Complete your first edition release to populate your study history.</span>`;
+          } else {
+            tagsContainer.innerHTML = completed.map(tag => `
+              <span class="inline-flex items-center bg-antique/10 border border-antique/20 text-antique px-2.5 py-1 rounded-md text-[9px] font-mono uppercase tracking-wider">
+                🛡️ ${tag}
+              </span>
+            `).join('');
+          }
+        }
+
+        // Auto-show editor layouts
         profileMdText.classList.remove("hidden");
         dropZoneIdle.classList.add("hidden");
         dropZone.classList.remove("border-dashed");
         dropZone.classList.add("border-antique/50", "bg-black/25");
       } else {
         profileStatus.textContent = "Profile empty";
-        
-        // Reset drop zone appearance if empty
-        profileMdText.value = '';
-        profileMdText.classList.add("hidden");
-        dropZoneIdle.classList.remove("hidden");
-        dropZone.classList.add("border-dashed");
-        dropZone.classList.remove("border-antique/50", "bg-black/25");
+        activeWorldviews = [];
       }
+
+      renderActiveLenses(userId);
     }
 
     // B. Save Context File to DB
