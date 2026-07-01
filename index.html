@@ -51,6 +51,54 @@
       background: rgba(13, 9, 7, 0.72);
       backdrop-filter: blur(14px);
     }
+    .source-release-card {
+      position: relative;
+      overflow: hidden;
+      border: 1px solid rgba(198, 167, 102, 0.22);
+      background:
+        linear-gradient(135deg, rgba(198, 167, 102, 0.12), rgba(16, 44, 38, 0.18)),
+        rgba(7, 5, 4, 0.72);
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.28);
+    }
+    .source-release-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, rgba(7, 5, 4, 0.18), rgba(7, 5, 4, 0.72));
+      pointer-events: none;
+      z-index: 1;
+    }
+    .source-release-thumb {
+      min-height: 10rem;
+      background:
+        radial-gradient(circle at 30% 20%, rgba(198, 167, 102, 0.22), transparent 34%),
+        linear-gradient(135deg, #2b1913, #102c26);
+    }
+    .source-release-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      filter: saturate(0.82) contrast(1.06);
+      transform: scale(1.01);
+      transition: transform 700ms ease, filter 700ms ease;
+    }
+    .source-release-card:hover .source-release-thumb img {
+      filter: saturate(1) contrast(1.12);
+      transform: scale(1.045);
+    }
+    .source-release-content {
+      position: relative;
+      z-index: 2;
+    }
+    .source-play-btn {
+      border: 1px solid rgba(198, 167, 102, 0.38);
+      background: rgba(242, 234, 220, 0.92);
+      color: #070504;
+    }
+    .source-play-btn:hover {
+      background: #c6a766;
+      color: #070504;
+    }
   </style>
 </head>
 <body class="min-h-screen relative flex flex-col justify-between overflow-x-hidden">
@@ -291,6 +339,38 @@
       const cleanUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash}`;
       window.history.replaceState({}, document.title, cleanUrl);
       return decoded;
+    }
+
+    function extractYouTubeVideoId(value) {
+      const text = String(value || '').trim();
+      const patterns = [
+        /(?:youtube\.com\/watch\?v=|youtube\.com\/shorts\/|youtu\.be\/)([A-Za-z0-9_-]{11})/,
+        /^[A-Za-z0-9_-]{11}$/
+      ];
+
+      for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (match) return match[1] || match[0];
+      }
+
+      return '';
+    }
+
+    function getSourceVisual(item) {
+      const videoId = item.youtube_video_id || extractYouTubeVideoId(item.source_input);
+      if (item.thumbnail_url || videoId) {
+        return {
+          kind: 'youtube',
+          label: 'YouTube Transcript',
+          thumbnail: item.thumbnail_url || `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`
+        };
+      }
+
+      return {
+        kind: 'book',
+        label: 'Book Study',
+        thumbnail: ''
+      };
     }
 
     // --- PROMPT TEXT CONSTANT ---
@@ -651,7 +731,7 @@ A single sentence that captures me as a learner and thinker — precise enough t
       renderSourceMaterialReleases();
       data.forEach(item => {
         const row = document.createElement("div");
-        row.className = "group flex items-start gap-4 p-4 rounded-lg bg-black/20 border border-white/[0.03] hover:border-antique/20 hover:bg-black/40 transition duration-300 text-left";
+        row.className = "group overflow-hidden rounded-xl border border-linen/10 bg-black/25 p-5 text-left transition duration-300 hover:border-antique/25 hover:bg-black/40";
         
         // Clean and format date
         const formattedDate = new Date(item.created_at).toLocaleDateString(undefined, {
@@ -661,13 +741,14 @@ A single sentence that captures me as a learner and thinker — precise enough t
         });
 
         row.innerHTML = `
-          <div class="flex-1 space-y-1">
-            <div class="flex items-center justify-between">
-              <h4 class="text-sm font-semibold text-cream group-hover:text-antique transition duration-300">${item.title}</h4>
+          <div class="space-y-3">
+            <div class="flex items-center justify-between gap-3">
+              <span class="text-[9px] font-mono uppercase tracking-[0.22em] text-antique/80">Scheduled Edition</span>
               <span class="text-[9px] font-mono text-linen/30">${formattedDate}</span>
             </div>
-            <p class="text-xs text-linen/60 leading-relaxed">${item.description}</p>
-            <button class="play-btn pt-2 flex items-center gap-1.5 text-[9px] font-mono uppercase tracking-widest text-antique hover:text-cream transition" data-path="${item.storage_path}" data-title="${item.title}">
+            <h4 class="font-serif text-2xl leading-tight text-cream group-hover:text-antique transition duration-300">${item.title}</h4>
+            <p class="text-sm text-linen/60 leading-relaxed">${item.description}</p>
+            <button class="play-btn inline-flex items-center gap-2 rounded-full border border-antique/35 bg-antique/10 px-4 py-2.5 text-[9px] font-mono font-bold uppercase tracking-widest text-antique transition hover:bg-antique hover:text-ink" data-path="${item.storage_path}" data-title="${item.title}">
               <span>▶</span> Stream Edition
             </button>
           </div>
@@ -707,7 +788,173 @@ A single sentence that captures me as a learner and thinker — precise enough t
         .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
         .forEach(item => {
           const row = document.createElement("div");
-          row.className = "group flex items-start gap-4 p-4 rounded-lg bg-antique/5 border border-antique/15 hover:border-antique/30 hover:bg-antique/10 transition duration-300 text-left";
+          row.className = "source-release-card group grid overflow-hidden rounded-xl text-left md:grid-cols-[minmax(180px,0.92fr)_minmax(0,1.35fr)]";
 
           const formattedDate = item.created_at
-            ? new Date(item.created_at).toLocal
+            ? new Date(item.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' })
+            : 'Recently';
+          const lenses = Array.isArray(item.selected_worldviews) && item.selected_worldviews.length
+            ? item.selected_worldviews.join(', ')
+            : item.worldview || 'Selected worldview';
+          const hasAudioText = Boolean(item.expanded_text);
+          const title = escapeHtml(item.source_title || 'Source Study');
+          const description = escapeHtml(`Source request remembered for ${lenses}. ${item.bridge_line || 'Your personal source reading is held in the private ledger.'}`);
+          const sourceInput = escapeHtml(item.source_input || '');
+          const visual = getSourceVisual(item);
+          const visualLabel = escapeHtml(visual.label);
+          const thumb = escapeHtml(visual.thumbnail);
+          const imageHtml = thumb
+            ? `<img src="${thumb}" alt="${title} thumbnail" loading="lazy" onerror="this.remove(); this.closest('.source-release-thumb').classList.add('is-fallback');">`
+            : `<div class="flex h-full min-h-[10rem] items-end p-5">
+                <div>
+                  <span class="block text-[9px] font-mono uppercase tracking-[0.24em] text-antique/85">Private Reading</span>
+                  <span class="mt-2 block font-serif text-3xl leading-none text-cream">Source<br>Study</span>
+                </div>
+              </div>`;
+
+          row.innerHTML = `
+            <div class="source-release-thumb relative">
+              ${imageHtml}
+              <div class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 to-transparent p-4">
+                <span class="inline-flex rounded-full border border-antique/30 bg-black/45 px-2.5 py-1 text-[8px] font-mono uppercase tracking-[0.18em] text-antique backdrop-blur">${visualLabel}</span>
+              </div>
+            </div>
+            <div class="source-release-content flex min-h-[15rem] flex-col justify-between gap-5 p-5 sm:p-6">
+              <div class="space-y-3">
+                <div class="flex items-center justify-between gap-3">
+                  <span class="text-[9px] font-mono uppercase tracking-[0.22em] text-antique/80">Source Audiobook</span>
+                  <span class="text-[9px] font-mono text-linen/35">${formattedDate}</span>
+                </div>
+                <h4 class="font-serif text-2xl leading-tight text-cream transition duration-300 group-hover:text-antique sm:text-3xl">${title}</h4>
+                <p class="text-sm text-linen/68 leading-relaxed">${description}</p>
+                <p class="rounded-lg border border-linen/10 bg-black/25 px-3 py-2 text-[10px] font-mono text-linen/45 truncate">${sourceInput}</p>
+              </div>
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <span class="text-[9px] font-mono uppercase tracking-[0.2em] text-linen/35">${escapeHtml(lenses)}</span>
+                <button class="source-play-btn inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5 text-[9px] font-mono font-bold uppercase tracking-widest transition duration-300 active:scale-[0.98]" ${hasAudioText ? '' : 'disabled'}>
+                  <span>${hasAudioText ? '▶' : '◌'}</span> ${hasAudioText ? 'Stream Audiobook' : 'Queued'}
+                </button>
+              </div>
+            </div>
+          `;
+
+          const playBtn = row.querySelector(".source-play-btn");
+          if (hasAudioText) {
+            playBtn.addEventListener("click", async () => {
+              playBtn.innerHTML = "<span>◌</span> Preparing voice...";
+
+              try {
+                const ttsRes = await fetch("https://frwjaixxlgthkgjtafhz.supabase.co/functions/v1/tts", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ text: item.expanded_text })
+                });
+
+                if (!ttsRes.ok) throw new Error(`TTS returned ${ttsRes.status}`);
+                const blob = await ttsRes.blob();
+                const audioUrl = URL.createObjectURL(blob);
+                playAudio(audioUrl, item.source_title || 'Source Study');
+                playBtn.innerHTML = "<span>▶</span> Stream Source Audiobook";
+              } catch (error) {
+                console.error("Source audiobook playback failed:", error);
+                playBtn.innerHTML = "<span>▶</span> Stream Failed";
+              }
+            });
+          }
+
+          releasesList.appendChild(row);
+        });
+    }
+
+    // D. Helper to load track into player
+    function playAudio(url, title) {
+      hudTrackTitle.textContent = title;
+      mainAudioPlayer.src = url;
+      audioPlayerHud.classList.remove("hidden");
+      mainAudioPlayer.load();
+      mainAudioPlayer.play().catch(err => {
+        console.warn("Autoplay blocked or play failed:", err);
+      });
+    }
+
+    // --- NEW DRAG-AND-DROP & COPY LOGIC INTERACTION ---
+
+    // 1. Copy Generator Prompt
+    if (copyPromptBtn) {
+      copyPromptBtn.addEventListener("click", () => {
+        navigator.clipboard.writeText(PROFILE_PROMPT_TEXT).then(() => {
+          const span = copyPromptBtn.querySelector("span");
+          const originalText = span.textContent;
+          span.textContent = "Copied to Clipboard";
+          copyPromptBtn.classList.add("border-antique", "bg-antique/20");
+          setTimeout(() => {
+            span.textContent = originalText;
+            copyPromptBtn.classList.remove("border-antique", "bg-antique/20");
+          }, 2200);
+        }).catch(err => {
+          console.warn("Clipboard copy operation failed:", err);
+        });
+      });
+    }
+
+    // 2. Process Dropped / Selected File
+    const processDroppedMd = (file) => {
+      if (!file) return;
+      const isMd = file.name.endsWith('.md') || file.type === 'text/markdown' || file.type === 'text/plain';
+      if (isMd) {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          profileMdText.value = e.target.result;
+          profileMdText.classList.remove("hidden");
+          dropZoneIdle.classList.add("hidden");
+          dropZone.classList.remove("border-dashed");
+          dropZone.classList.add("border-antique/50", "bg-black/25");
+          profileStatus.textContent = "Draft loaded (Save to apply)";
+        };
+        reader.readAsText(file);
+      }
+    };
+
+    if (dropZone) {
+      dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("border-antique", "bg-[#1c140f]");
+      });
+      dropZone.addEventListener("dragleave", () => {
+        dropZone.classList.remove("border-antique", "bg-[#1c140f]");
+      });
+      dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("border-antique", "bg-[#1c140f]");
+        if (e.dataTransfer.files.length > 0) {
+          processDroppedMd(e.dataTransfer.files[0]);
+        }
+      });
+      dropZone.addEventListener("click", (e) => {
+        if (e.target !== profileMdText && !revealPasteBtn.contains(e.target)) {
+          mdFileInput?.click();
+        }
+      });
+    }
+
+    if (mdFileInput) {
+      mdFileInput.addEventListener("change", (e) => {
+        if (e.target.files.length > 0) {
+          processDroppedMd(e.target.files[0]);
+        }
+      });
+    }
+
+    if (revealPasteBtn) {
+      revealPasteBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        dropZoneIdle.classList.add("hidden");
+        profileMdText.classList.remove("hidden");
+        profileMdText.focus();
+      });
+    }
+  </script>
+
+</body>
+</html>
