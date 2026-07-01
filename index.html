@@ -256,9 +256,42 @@
     
     // --- NEW REFERENCES FOR ACTIVE LENSES ---
     const availableWorldviews = [
-      "Becoming", "Existentialism", "Stoicism", "Absurdism", "The Leap", "Mysticism", "Eastern Wisdom", "Politics", "Witness"
+      "Becoming", "Existentialism", "Stoicism", "Absurdism", "The Leap", "Mysticism", "Eastern Wisdom", "Politics", "Witness",
+      "Guideposts", "Angels on Earth", "Mysterious Ways", "Mornings with Jesus", "Strength & Grace"
     ];
     let activeWorldviews = [];
+    let sourceMaterials = [];
+    let accountHandoff = readAccountHandoff();
+
+    function escapeHtml(value) {
+      return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function decodeAccountHandoff(value) {
+      try {
+        return JSON.parse(decodeURIComponent(escape(atob(value))));
+      } catch (e) {
+        console.error("Account handoff decode failed:", e);
+        return null;
+      }
+    }
+
+    function readAccountHandoff() {
+      const params = new URLSearchParams(window.location.search);
+      const handoff = params.get('handoff');
+      if (!handoff) return null;
+
+      const decoded = decodeAccountHandoff(handoff);
+      params.delete('handoff');
+      const cleanUrl = `${window.location.pathname}${params.toString() ? `?${params.toString()}` : ''}${window.location.hash}`;
+      window.history.replaceState({}, document.title, cleanUrl);
+      return decoded;
+    }
 
     // --- PROMPT TEXT CONSTANT ---
     const PROFILE_PROMPT_TEXT = `# Prompt: Generate My Personal Learning & Context Profile
@@ -321,10 +354,12 @@ A single sentence that captures me as a learner and thinker — precise enough t
 // 1. This function grabs any temporary selections from the landing page and saves them permanently
     async function syncPendingWorldviews(userId) {
       const pending = localStorage.getItem('pending_worldviews');
-      if (pending) {
+      const handoffList = Array.isArray(accountHandoff?.selected_worldviews) ? accountHandoff.selected_worldviews : [];
+      if (pending || handoffList.length) {
         try {
-          const pendingList = JSON.parse(pending);
-          if (Array.isArray(pendingList) && pendingList.length > 0) {
+          const pendingList = pending ? JSON.parse(pending) : [];
+          const combinedList = Array.from(new Set([...pendingList, ...handoffList]));
+          if (Array.isArray(combinedList) && combinedList.length > 0) {
             const { data } = await supabaseClient
               .from('user_contexts')
               .select('selected_worldviews')
@@ -332,7 +367,7 @@ A single sentence that captures me as a learner and thinker — precise enough t
               .single();
 
             const currentList = data?.selected_worldviews || [];
-            const merged = Array.from(new Set([...currentList, ...pendingList]));
+            const merged = Array.from(new Set([...currentList, ...combinedList]));
 
             await supabaseClient
               .from('user_contexts')
@@ -347,6 +382,58 @@ A single sentence that captures me as a learner and thinker — precise enough t
         } finally {
           localStorage.removeItem('pending_worldviews'); // Clear the temp memory
         }
+      }
+    }
+
+    async function syncPendingSourceMaterials(userId) {
+      const pending = localStorage.getItem('pending_source_materials');
+      const handoffList = Array.isArray(accountHandoff?.source_materials) ? accountHandoff.source_materials : [];
+      if (!pending && handoffList.length === 0) return [];
+
+      let pendingList = [];
+      try {
+        pendingList = pending ? JSON.parse(pending) : [];
+      } catch (e) {
+        console.error("Source material parse error:", e);
+      }
+
+      pendingList = Array.isArray(pendingList) ? pendingList : [];
+      const combinedList = [...pendingList, ...handoffList];
+      if (combinedList.length === 0) return [];
+
+      try {
+        const { data } = await supabaseClient
+          .from('user_contexts')
+          .select('*')
+          .eq('user_id', userId)
+          .single();
+
+        const currentList = Array.isArray(data?.source_materials) ? data.source_materials : [];
+        const mergedMap = new Map();
+
+        [...currentList, ...combinedList].forEach((item) => {
+          if (!item) return;
+          const key = item.id || item.source_input || `${item.source_title}-${item.created_at}`;
+          mergedMap.set(key, item);
+        });
+
+        const merged = Array.from(mergedMap.values());
+
+        const { error } = await supabaseClient
+          .from('user_contexts')
+          .upsert({
+            user_id: userId,
+            source_materials: merged,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'user_id' });
+
+        if (error) throw error;
+
+        localStorage.removeItem('pending_source_materials');
+        return merged;
+      } catch (e) {
+        console.error("Source material sync error:", e);
+        return combinedList;
       }
     }
 
@@ -444,7 +531,7 @@ A single sentence that captures me as a learner and thinker — precise enough t
       patronGreeting.textContent = `Welcome, Member`;
       
       // Fetch User's .md Context
-      fetchUserContext(user.id);
+      await fetchUserContext(user.id);
 
       // Fetch Pre-Generated Personalized Releases
       fetchUserReleases(user.id);
@@ -456,10 +543,11 @@ A single sentence that captures me as a learner and thinker — precise enough t
       
       // Perform pending local sync if applicable
       await syncPendingWorldviews(userId);
+      const pendingSources = await syncPendingSourceMaterials(userId);
 
       const { data, error } = await supabaseClient
         .from('user_contexts')
-        .select('markdown_text, selected_worldviews, completed_topics, last_reflection_summary')
+        .select('*')
         .eq('user_id', userId)
         .single();
 
@@ -470,6 +558,7 @@ A single sentence that captures me as a learner and thinker — precise enough t
         // 1. Context text area
         profileMdText.value = data.markdown_text || '';
         activeWorldviews = data.selected_worldviews || [];
+        sourceMaterials = Array.isArray(data.source_materials) ? data.source_materials : pendingSources;
         profileStatus.textContent = "Saved to vault";
         
         // 2. Render Last Reflection Summary
@@ -501,6 +590,7 @@ A single sentence that captures me as a learner and thinker — precise enough t
       } else {
         profileStatus.textContent = "Profile empty";
         activeWorldviews = [];
+        sourceMaterials = pendingSources;
       }
 
       renderActiveLenses(userId);
@@ -549,11 +639,16 @@ A single sentence that captures me as a learner and thinker — precise enough t
       }
 
       if (!data || data.length === 0) {
-        releasesList.innerHTML = '<p class="text-xs text-linen/30 italic py-6 text-center">Your upcoming issue is currently being composed. It will appear here on release day.</p>';
+        releasesList.innerHTML = '';
+        renderSourceMaterialReleases();
+        if (releasesList.children.length === 0) {
+          releasesList.innerHTML = '<p class="text-xs text-linen/30 italic py-6 text-center">Your upcoming issue is currently being composed. It will appear here on release day.</p>';
+        }
         return;
       }
 
       releasesList.innerHTML = '';
+      renderSourceMaterialReleases();
       data.forEach(item => {
         const row = document.createElement("div");
         row.className = "group flex items-start gap-4 p-4 rounded-lg bg-black/20 border border-white/[0.03] hover:border-antique/20 hover:bg-black/40 transition duration-300 text-left";
@@ -604,95 +699,15 @@ A single sentence that captures me as a learner and thinker — precise enough t
       });
     }
 
-    // D. Helper to load track into player
-    function playAudio(url, title) {
-      hudTrackTitle.textContent = title;
-      mainAudioPlayer.src = url;
-      audioPlayerHud.classList.remove("hidden");
-      mainAudioPlayer.load();
-      mainAudioPlayer.play().catch(err => {
-        console.warn("Autoplay blocked or play failed:", err);
-      });
-    }
+    function renderSourceMaterialReleases() {
+      if (!Array.isArray(sourceMaterials) || sourceMaterials.length === 0) return;
 
-    // --- NEW DRAG-AND-DROP & COPY LOGIC INTERACTION ---
+      sourceMaterials
+        .slice()
+        .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+        .forEach(item => {
+          const row = document.createElement("div");
+          row.className = "group flex items-start gap-4 p-4 rounded-lg bg-antique/5 border border-antique/15 hover:border-antique/30 hover:bg-antique/10 transition duration-300 text-left";
 
-    // 1. Copy Generator Prompt
-    if (copyPromptBtn) {
-      copyPromptBtn.addEventListener("click", () => {
-        navigator.clipboard.writeText(PROFILE_PROMPT_TEXT).then(() => {
-          const span = copyPromptBtn.querySelector("span");
-          const originalText = span.textContent;
-          span.textContent = "Copied to Clipboard";
-          copyPromptBtn.classList.add("border-antique", "bg-antique/20");
-          setTimeout(() => {
-            span.textContent = originalText;
-            copyPromptBtn.classList.remove("border-antique", "bg-antique/20");
-          }, 2200);
-        }).catch(err => {
-          console.warn("Clipboard copy operation failed:", err);
-        });
-      });
-    }
-
-    // 2. Process Dropped / Selected File
-    const processDroppedMd = (file) => {
-      if (!file) return;
-      const isMd = file.name.endsWith('.md') || file.type === 'text/markdown' || file.type === 'text/plain';
-      if (isMd) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          profileMdText.value = e.target.result;
-          profileMdText.classList.remove("hidden");
-          dropZoneIdle.classList.add("hidden");
-          dropZone.classList.remove("border-dashed");
-          dropZone.classList.add("border-antique/50", "bg-black/25");
-          profileStatus.textContent = "Draft loaded (Save to apply)";
-        };
-        reader.readAsText(file);
-      }
-    };
-
-    if (dropZone) {
-      dropZone.addEventListener("dragover", (e) => {
-        e.preventDefault();
-        dropZone.classList.add("border-antique", "bg-[#1c140f]");
-      });
-      dropZone.addEventListener("dragleave", () => {
-        dropZone.classList.remove("border-antique", "bg-[#1c140f]");
-      });
-      dropZone.addEventListener("drop", (e) => {
-        e.preventDefault();
-        dropZone.classList.remove("border-antique", "bg-[#1c140f]");
-        if (e.dataTransfer.files.length > 0) {
-          processDroppedMd(e.dataTransfer.files[0]);
-        }
-      });
-      dropZone.addEventListener("click", (e) => {
-        if (e.target !== profileMdText && !revealPasteBtn.contains(e.target)) {
-          mdFileInput?.click();
-        }
-      });
-    }
-
-    if (mdFileInput) {
-      mdFileInput.addEventListener("change", (e) => {
-        if (e.target.files.length > 0) {
-          processDroppedMd(e.target.files[0]);
-        }
-      });
-    }
-
-    if (revealPasteBtn) {
-      revealPasteBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        e.preventDefault();
-        dropZoneIdle.classList.add("hidden");
-        profileMdText.classList.remove("hidden");
-        profileMdText.focus();
-      });
-    }
-  </script>
-
-</body>
-</html>
+          const formattedDate = item.created_at
+            ? new Date(item.created_at).toLocal
